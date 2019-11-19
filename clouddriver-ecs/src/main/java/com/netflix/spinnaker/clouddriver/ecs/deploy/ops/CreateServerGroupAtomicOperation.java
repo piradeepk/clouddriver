@@ -82,6 +82,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.assertj.core.util.Sets;
 import org.springframework.beans.factory.annotation.Autowired;
 
 public class CreateServerGroupAtomicOperation
@@ -678,20 +679,40 @@ public class CreateServerGroupAtomicOperation
 
   private Collection<LoadBalancer> retrieveLoadBalancers(String containerName) {
     Collection<LoadBalancer> loadBalancers = new LinkedList<>();
-    if (description.getTargetGroup() != null && !description.getTargetGroup().isEmpty()) {
-      LoadBalancer loadBalancer = new LoadBalancer();
+    Set<CreateServerGroupDescription.TargetGroupProperties> targetGroupMappings = Sets.newHashSet();
+
+    if (description.getTargetGroupMappings() != null
+        && !description.getTargetGroupMappings().isEmpty()) {
+      targetGroupMappings.addAll(description.getTargetGroupMappings());
+    }
+
+    if (StringUtils.isNotBlank(description.getTargetGroup())) {
+      CreateServerGroupDescription.TargetGroupProperties targetGroupMapping =
+          new CreateServerGroupDescription.TargetGroupProperties();
+
       String containerToUse =
           description.getLoadBalancedContainer() != null
                   && !description.getLoadBalancedContainer().isEmpty()
               ? description.getLoadBalancedContainer()
               : containerName;
-      loadBalancer.setContainerName(containerToUse);
-      loadBalancer.setContainerPort(description.getContainerPort());
+
+      targetGroupMapping.setContainerName(containerToUse);
+      targetGroupMapping.setContainerPort(description.getContainerPort());
+      targetGroupMapping.setTargetGroup(description.getTargetGroup());
+
+      targetGroupMappings.add(targetGroupMapping);
+    }
+
+    for (CreateServerGroupDescription.TargetGroupProperties targetGroupAssociation :
+        targetGroupMappings) {
+      LoadBalancer loadBalancer = new LoadBalancer();
+      loadBalancer.setContainerName(targetGroupAssociation.getContainerName());
+      loadBalancer.setContainerPort(targetGroupAssociation.getContainerPort());
 
       AmazonElasticLoadBalancing loadBalancingV2 = getAmazonElasticLoadBalancingClient();
 
       DescribeTargetGroupsRequest request =
-          new DescribeTargetGroupsRequest().withNames(description.getTargetGroup());
+          new DescribeTargetGroupsRequest().withNames(targetGroupAssociation.getTargetGroup());
       DescribeTargetGroupsResult describeTargetGroupsResult =
           loadBalancingV2.describeTargetGroups(request);
 
@@ -700,14 +721,19 @@ public class CreateServerGroupAtomicOperation
             describeTargetGroupsResult.getTargetGroups().get(0).getTargetGroupArn());
       } else if (describeTargetGroupsResult.getTargetGroups().size() > 1) {
         throw new IllegalArgumentException(
-            "There are multiple target groups with the name " + description.getTargetGroup() + ".");
+            "There are multiple target groups with the name "
+                + targetGroupAssociation.getTargetGroup()
+                + ".");
       } else {
         throw new IllegalArgumentException(
-            "There is no target group with the name " + description.getTargetGroup() + ".");
+            "There is no target group with the name "
+                + targetGroupAssociation.getTargetGroup()
+                + ".");
       }
 
       loadBalancers.add(loadBalancer);
     }
+
     return loadBalancers;
   }
 

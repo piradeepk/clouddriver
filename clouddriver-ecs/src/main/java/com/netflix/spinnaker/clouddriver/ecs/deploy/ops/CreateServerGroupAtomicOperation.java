@@ -84,7 +84,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.assertj.core.util.Sets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -711,7 +710,7 @@ public class CreateServerGroupAtomicOperation
 
   private Collection<LoadBalancer> retrieveLoadBalancers(String containerName) {
     Set<LoadBalancer> loadBalancers = new HashSet<>();
-    Set<CreateServerGroupDescription.TargetGroupProperties> targetGroupMappings = Sets.newHashSet();
+    Set<CreateServerGroupDescription.TargetGroupProperties> targetGroupMappings = new HashSet<>();
 
     if (description.getTargetGroupMappings() != null
         && !description.getTargetGroupMappings().isEmpty()) {

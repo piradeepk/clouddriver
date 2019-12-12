@@ -161,12 +161,15 @@ public class EcsCreateServerGroupDescriptionValidator extends CommonValidator {
 
   private void validateTargetGroupMappings(
       CreateServerGroupDescription createServerGroupDescription, Errors errors) {
-    if (createServerGroupDescription.getTargetGroupMappings() != null) {
-      Set<CreateServerGroupDescription.TargetGroupProperties> targetGroupMappings =
-          createServerGroupDescription.getTargetGroupMappings();
+    if (createServerGroupDescription.getTargetGroupMappings() != null
+        && !createServerGroupDescription.getTargetGroupMappings().isEmpty()) {
+
+      if (!StringUtils.isBlank(createServerGroupDescription.getTargetGroup())) {
+        rejectValue(errors, "targetGroup", "invalid");
+      }
 
       for (CreateServerGroupDescription.TargetGroupProperties targetGroupProperties :
-          targetGroupMappings) {
+          createServerGroupDescription.getTargetGroupMappings()) {
         // Verify each target group mapping contains a target group name, container name (or docker
         // image address if it's a single container using inputs), and container port.
         boolean hasTargetGroup = StringUtils.isNotBlank(targetGroupProperties.getTargetGroup());

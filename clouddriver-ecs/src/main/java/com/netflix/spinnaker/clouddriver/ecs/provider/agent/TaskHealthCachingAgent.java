@@ -24,8 +24,10 @@ import static com.netflix.spinnaker.clouddriver.ecs.cache.Keys.Namespace.TASK_DE
 
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.services.ecs.AmazonECS;
+import com.amazonaws.services.ecs.model.Container;
 import com.amazonaws.services.ecs.model.ContainerDefinition;
 import com.amazonaws.services.ecs.model.LoadBalancer;
+import com.amazonaws.services.ecs.model.NetworkBinding;
 import com.amazonaws.services.ecs.model.NetworkInterface;
 import com.amazonaws.services.ecs.model.PortMapping;
 import com.amazonaws.services.ecs.model.TaskDefinition;
@@ -246,24 +248,6 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
     return Optional.empty();
   }
 
-  private Optional<Integer> getTargetGroupHostPort(
-      List<ContainerDefinition> containerDefinitions, Integer lbHostPort) {
-    for (ContainerDefinition containerDefinition : containerDefinitions) {
-      log.debug(
-          "Looking for HostPort: {} in PortMappings: {}",
-          lbHostPort,
-          containerDefinition.getPortMappings());
-      for (PortMapping portMapping : containerDefinition.getPortMappings()) {
-        if (portMapping.getHostPort().intValue() == lbHostPort.intValue()) {
-          log.debug("Load balanced hostPort: {} found for container.", lbHostPort);
-          return Optional.of(lbHostPort);
-        }
-      }
-    }
-
-    return Optional.empty();
-  }
-
   private void evictStaleData(Task task, Service loadBalancerService) {
     String serviceEvictionKey =
         Keys.getTaskDefinitionKey(accountName, region, loadBalancerService.getServiceName());
@@ -323,8 +307,7 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
       }
 
       Optional<Integer> targetGroupPort =
-          getTargetGroupHostPort(
-              taskDefinition.getContainerDefinitions(), loadBalancer.getContainerPort());
+          getTargetGroupHostPort(task.getContainers(), loadBalancer.getContainerPort());
 
       if (!targetGroupPort.isPresent()) {
         log.debug(
@@ -360,6 +343,21 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
     }
 
     return taskHealthList;
+  }
+
+  private Optional<Integer> getTargetGroupHostPort(List<Container> containers, Integer lbHostPort) {
+    if (containers != null && !containers.isEmpty()) {
+      for (Container container : containers) {
+        for (NetworkBinding networkBinding : container.getNetworkBindings()) {
+          if (networkBinding.getHostPort().intValue() == lbHostPort.intValue()) {
+            log.debug("Load balanced hostPort: {} found for container.", lbHostPort);
+            return Optional.of(lbHostPort);
+          }
+        }
+      }
+    }
+
+    return Optional.empty();
   }
 
   private boolean isContainerMissingNetworking(Task task) {

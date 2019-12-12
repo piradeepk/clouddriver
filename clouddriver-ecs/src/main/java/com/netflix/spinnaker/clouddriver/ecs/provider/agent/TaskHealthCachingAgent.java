@@ -60,7 +60,6 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,6 +69,8 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
   private static final Collection<AgentDataType> types =
       Collections.unmodifiableCollection(Arrays.asList(AUTHORITATIVE.forType(HEALTH.toString())));
   private static final String HEALTH_ID = "ecs-task-instance-health";
+  private static final String STATUS_UP = "Up";
+  private static final String STATUS_UNKNOWN = "Unknown";
   private final Logger log = LoggerFactory.getLogger(getClass());
 
   private Collection<String> taskEvictions;
@@ -90,7 +91,6 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
   public static Map<String, Object> convertTaskHealthToAttributes(TaskHealth taskHealth) {
     Map<String, Object> attributes = new HashMap<>();
     attributes.put("instanceId", taskHealth.getInstanceId());
-
     attributes.put("state", taskHealth.getState());
     attributes.put("type", taskHealth.getType());
     attributes.put("service", taskHealth.getServiceName());
@@ -143,24 +143,26 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
           continue;
         }
 
-        List<TaskHealth> taskHealth = new LinkedList<>();
+        TaskHealth taskHealth;
         if (task.getContainers().get(0).getNetworkBindings().size() >= 1) {
-          taskHealth.addAll(
+          taskHealth =
               inferHealthNetworkBindedContainer(
                   amazonloadBalancing,
                   task,
                   containerInstance,
                   serviceName,
                   service,
-                  taskDefinition));
+                  taskDefinition);
         } else {
-          taskHealth.addAll(
+          taskHealth =
               inferHealthNetworkInterfacedContainer(
-                  amazonloadBalancing, task, serviceName, service, taskDefinition));
+                  amazonloadBalancing, task, serviceName, service, taskDefinition);
         }
         log.debug("Task Health contains the following elements: {}", taskHealth);
 
-        taskHealthList.addAll(taskHealth);
+        if (taskHealth != null) {
+          taskHealthList.add(taskHealth);
+        }
         log.debug("TaskHealthList contains the following elements: {}", taskHealthList);
       }
     }
@@ -168,33 +170,30 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
     return taskHealthList;
   }
 
-  private List<TaskHealth> inferHealthNetworkInterfacedContainer(
+  private TaskHealth inferHealthNetworkInterfacedContainer(
       AmazonElasticLoadBalancing amazonloadBalancing,
       Task task,
       String serviceName,
       Service loadBalancerService,
       TaskDefinition taskDefinition) {
 
-    List<TaskHealth> taskHealthList = new LinkedList<>();
-
     if (taskDefinition == null) {
       log.debug("Provided task definition is null.");
-      return taskHealthList;
+      return null;
     }
 
     List<LoadBalancer> loadBalancers = loadBalancerService.getLoadBalancers();
     log.debug("LoadBalancerService found {} load balancers.", loadBalancers.size());
 
+    TaskHealth overallTaskHealth = null;
     for (LoadBalancer loadBalancer : loadBalancers) {
       if (loadBalancer.getTargetGroupArn() == null) {
         log.debug("LoadBalancer does not contain a target group arn.");
         continue;
       }
 
-      Optional<Integer> targetGroupPort =
-          getTargetGroupContainerPort(
-              taskDefinition.getContainerDefinitions(), loadBalancer.getContainerPort());
-      if (!targetGroupPort.isPresent()) {
+      if (!isContainerPortPresent(
+          taskDefinition.getContainerDefinitions(), loadBalancer.getContainerPort())) {
         log.debug(
             "Container does not contain a port mapping with load balanced container port: {}.",
             loadBalancer.getContainerPort());
@@ -203,49 +202,18 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
 
       NetworkInterface networkInterface = task.getContainers().get(0).getNetworkInterfaces().get(0);
 
-      DescribeTargetHealthResult describeTargetHealthResult =
-          amazonloadBalancing.describeTargetHealth(
-              new DescribeTargetHealthRequest()
-                  .withTargetGroupArn(loadBalancer.getTargetGroupArn())
-                  .withTargets(
-                      new TargetDescription()
-                          .withId(networkInterface.getPrivateIpv4Address())
-                          .withPort(targetGroupPort.get())));
-
-      if (describeTargetHealthResult.getTargetHealthDescriptions().isEmpty()) {
-        log.debug("Target health description is empty");
-        evictStaleData(task, loadBalancerService);
-        continue;
-      }
-
-      log.debug(
-          "Target health description is not empty and has a size of {}",
-          describeTargetHealthResult.getTargetHealthDescriptions().size());
-      TargetHealthDescription healthDescription =
-          describeTargetHealthResult.getTargetHealthDescriptions().get(0);
-
-      TaskHealth taskHealth = makeTaskHealth(task, serviceName, healthDescription);
-      taskHealthList.add(taskHealth);
+      overallTaskHealth =
+          describeTargetHealth(
+              amazonloadBalancing,
+              task,
+              loadBalancerService,
+              serviceName,
+              loadBalancer.getTargetGroupArn(),
+              networkInterface.getPrivateIpv4Address(),
+              loadBalancer.getContainerPort(),
+              overallTaskHealth);
     }
-    return taskHealthList;
-  }
-
-  private Optional<Integer> getTargetGroupContainerPort(
-      List<ContainerDefinition> containerDefinitions, Integer containerPort) {
-    for (ContainerDefinition containerDefinition : containerDefinitions) {
-      log.debug(
-          "Looking for ContainerPort: {} in PortMappings: {}",
-          containerPort,
-          containerDefinition.getPortMappings());
-      for (PortMapping portMapping : containerDefinition.getPortMappings()) {
-        if (portMapping.getContainerPort().intValue() == containerPort.intValue()) {
-          log.debug("Load balanced containerPort: {} found for container.", containerPort);
-          return Optional.of(containerPort);
-        }
-      }
-    }
-
-    return Optional.empty();
+    return overallTaskHealth;
   }
 
   private void evictStaleData(Task task, Service loadBalancerService) {
@@ -264,7 +232,9 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
       Task task, String serviceName, TargetHealthDescription healthDescription) {
     log.debug("Task target health is: {}", healthDescription.getTargetHealth());
     String targetHealth =
-        healthDescription.getTargetHealth().getState().equals("healthy") ? "Up" : "Unknown";
+        healthDescription.getTargetHealth().getState().equals("healthy")
+            ? STATUS_UP
+            : STATUS_UNKNOWN;
 
     TaskHealth taskHealth = new TaskHealth();
     taskHealth.setType("loadBalancer");
@@ -277,24 +247,22 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
     return taskHealth;
   }
 
-  private List<TaskHealth> inferHealthNetworkBindedContainer(
+  private TaskHealth inferHealthNetworkBindedContainer(
       AmazonElasticLoadBalancing amazonloadBalancing,
       Task task,
       ContainerInstance containerInstance,
       String serviceName,
       Service loadBalancerService,
       TaskDefinition taskDefinition) {
-
-    List<TaskHealth> taskHealthList = new LinkedList<>();
-
     if (taskDefinition == null) {
       log.debug("Provided task definition is null.");
-      return taskHealthList;
+      return null;
     }
 
     List<LoadBalancer> loadBalancers = loadBalancerService.getLoadBalancers();
     log.debug("LoadBalancerService found {} load balancers.", loadBalancers.size());
 
+    TaskHealth overallTaskHealth = null;
     for (LoadBalancer loadBalancer : loadBalancers) {
       if (loadBalancer.getTargetGroupArn() == null) {
         log.debug("LoadBalancer does not contain a target group arn.");
@@ -306,58 +274,90 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
         continue;
       }
 
-      Optional<Integer> targetGroupPort =
-          getTargetGroupHostPort(task.getContainers(), loadBalancer.getContainerPort());
-
-      if (!targetGroupPort.isPresent()) {
+      if (!isHostPortPresent(task.getContainers(), loadBalancer.getContainerPort())) {
         log.debug(
             "Container does not contain a port mapping with load balanced container port: {}.",
             loadBalancer.getContainerPort());
         continue;
       }
 
-      DescribeTargetHealthResult describeTargetHealthResult;
-      describeTargetHealthResult =
-          amazonloadBalancing.describeTargetHealth(
-              new DescribeTargetHealthRequest()
-                  .withTargetGroupArn(loadBalancer.getTargetGroupArn())
-                  .withTargets(
-                      new TargetDescription()
-                          .withId(containerInstance.getEc2InstanceId())
-                          .withPort(targetGroupPort.get())));
-
-      if (describeTargetHealthResult.getTargetHealthDescriptions().isEmpty()) {
-        log.debug("Target health description is empty");
-        evictStaleData(task, loadBalancerService);
-        continue;
-      }
-
-      log.debug(
-          "Target health description is not empty and has a size of {}",
-          describeTargetHealthResult.getTargetHealthDescriptions().size());
-      TargetHealthDescription healthDescription =
-          describeTargetHealthResult.getTargetHealthDescriptions().get(0);
-
-      TaskHealth taskHealth = makeTaskHealth(task, serviceName, healthDescription);
-      taskHealthList.add(taskHealth);
+      overallTaskHealth =
+          describeTargetHealth(
+              amazonloadBalancing,
+              task,
+              loadBalancerService,
+              serviceName,
+              loadBalancer.getTargetGroupArn(),
+              containerInstance.getEc2InstanceId(),
+              loadBalancer.getContainerPort(),
+              overallTaskHealth);
     }
 
-    return taskHealthList;
+    return overallTaskHealth;
   }
 
-  private Optional<Integer> getTargetGroupHostPort(List<Container> containers, Integer lbHostPort) {
+  private TaskHealth describeTargetHealth(
+      AmazonElasticLoadBalancing amazonloadBalancing,
+      Task task,
+      Service loadBalancerService,
+      String serviceName,
+      String targetGroupArn,
+      String targetId,
+      Integer targetPort,
+      TaskHealth overallTaskHealth) {
+    DescribeTargetHealthResult describeTargetHealthResult =
+        amazonloadBalancing.describeTargetHealth(
+            new DescribeTargetHealthRequest()
+                .withTargetGroupArn(targetGroupArn)
+                .withTargets(new TargetDescription().withId(targetId).withPort(targetPort)));
+
+    if (describeTargetHealthResult.getTargetHealthDescriptions().isEmpty()) {
+      log.debug("Target health description is empty");
+      evictStaleData(task, loadBalancerService);
+      return overallTaskHealth;
+    }
+
+    log.debug(
+        "Target health description is not empty and has a size of {}",
+        describeTargetHealthResult.getTargetHealthDescriptions().size());
+    TargetHealthDescription healthDescription =
+        describeTargetHealthResult.getTargetHealthDescriptions().get(0);
+
+    TaskHealth taskHealth = makeTaskHealth(task, serviceName, healthDescription);
+    if ((overallTaskHealth == null) || (taskHealth.getState().equals(STATUS_UNKNOWN))) {
+      return taskHealth;
+    }
+
+    return overallTaskHealth;
+  }
+
+  private boolean isHostPortPresent(List<Container> containers, Integer hostPort) {
     if (containers != null && !containers.isEmpty()) {
       for (Container container : containers) {
         for (NetworkBinding networkBinding : container.getNetworkBindings()) {
-          if (networkBinding.getHostPort().intValue() == lbHostPort.intValue()) {
-            log.debug("Load balanced hostPort: {} found for container.", lbHostPort);
-            return Optional.of(lbHostPort);
+          if (networkBinding.getHostPort().intValue() == hostPort.intValue()) {
+            log.debug("Load balanced hostPort: {} found for container.", hostPort);
+            return true;
           }
         }
       }
     }
 
-    return Optional.empty();
+    return false;
+  }
+
+  private boolean isContainerPortPresent(
+      List<ContainerDefinition> containerDefinitions, Integer containerPort) {
+    for (ContainerDefinition containerDefinition : containerDefinitions) {
+      for (PortMapping portMapping : containerDefinition.getPortMappings()) {
+        if (portMapping.getContainerPort().intValue() == containerPort.intValue()) {
+          log.debug("Load balanced containerPort: {} found for container.", containerPort);
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   private boolean isContainerMissingNetworking(Task task) {

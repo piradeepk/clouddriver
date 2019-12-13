@@ -166,7 +166,7 @@ public class EcsCreateServerGroupDescriptionValidator extends CommonValidator {
 
       if (StringUtils.isNotEmpty(createServerGroupDescription.getTargetGroup())) {
         // Only one of TargetGroup or TargetGroupMappings should be defined.
-        rejectValue(errors, "targetGroup", "invalid");
+        rejectValue(errors, "targetGroup", "deprecated.use.targetGroupMappings");
       }
 
       for (CreateServerGroupDescription.TargetGroupProperties targetGroupProperties :

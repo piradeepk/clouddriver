@@ -211,6 +211,26 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
     1 * errors.rejectValue('targetGroupMappings.containerPort', "${getDescriptionName()}.targetGroupMappings.containerPort.invalid")
   }
 
+  void 'target group mappings should fail when both target invalid'() {
+    given:
+    def targetGroupMappings = new CreateServerGroupDescription.TargetGroupProperties(
+      containerName: null,
+      containerPort: -1,
+      targetGroup: 'target-group-arn'
+    )
+    def description = getDescription()
+    description.targetGroup = null
+    description.containerPort = null
+    description.targetGroupMappings = [targetGroupMappings]
+    def errors = Mock(Errors)
+
+    when:
+    validator.validate([], description, errors)
+
+    then:
+    1 * errors.rejectValue('targetGroupMappings.containerPort', "${getDescriptionName()}.targetGroupMappings.containerPort.invalid")
+  }
+
   void 'target group mappings should fail when container port is missing'() {
     given:
     def targetGroupMappings = new CreateServerGroupDescription.TargetGroupProperties(

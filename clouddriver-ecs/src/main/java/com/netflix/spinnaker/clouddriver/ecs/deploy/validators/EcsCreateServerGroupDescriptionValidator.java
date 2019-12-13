@@ -164,9 +164,8 @@ public class EcsCreateServerGroupDescriptionValidator extends CommonValidator {
     if (createServerGroupDescription.getTargetGroupMappings() != null
         && !createServerGroupDescription.getTargetGroupMappings().isEmpty()) {
 
-      if (StringUtils.isNotEmpty(createServerGroupDescription.getTargetGroup())) {
-        // Only one of TargetGroup or TargetGroupMappings should be defined.
-        rejectValue(errors, "targetGroup", "deprecated.use.targetGroupMappings");
+      if (!StringUtils.isBlank(createServerGroupDescription.getTargetGroup())) {
+        rejectValue(errors, "targetGroup", "invalid");
       }
 
       for (CreateServerGroupDescription.TargetGroupProperties targetGroupProperties :
@@ -178,20 +177,20 @@ public class EcsCreateServerGroupDescriptionValidator extends CommonValidator {
 
         if (createServerGroupDescription.isUseTaskDefinitionArtifact()) {
           if (hasTargetGroup && !hasContainerName) {
-            rejectValue(errors, "targetGroupMappings.containerName", "not.nullable");
+            rejectValue(errors, "containerName", "not.nullable");
           } else if (!hasTargetGroup && hasContainerName) {
-            rejectValue(errors, "targetGroupMappings.targetGroup", "not.nullable");
+            rejectValue(errors, "targetGroup", "not.nullable");
           }
         }
 
         if (targetGroupProperties.getContainerPort() != null) {
           if (targetGroupProperties.getContainerPort() < 0
               || targetGroupProperties.getContainerPort() > 65535) {
-            rejectValue(errors, "targetGroupMappings.containerPort", "invalid");
+            rejectValue(errors, "containerPort", "invalid");
           }
         } else if (hasTargetGroup) {
           // if a target group is specified, a container port must be specified
-          rejectValue(errors, "targetGroupMappings.containerPort", "not.nullable");
+          rejectValue(errors, "containerPort", "not.nullable");
         }
       }
     }

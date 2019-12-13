@@ -166,7 +166,7 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
     validator.validate([], description, errors)
 
     then:
-    1 * errors.rejectValue('targetGroupMappings.containerName', "${getDescriptionName()}.targetGroupMappings.containerName.not.nullable")
+    1 * errors.rejectValue('containerName', "${getDescriptionName()}.containerName.not.nullable")
   }
 
   void 'target group mappings should fail when container name is specified but load balancer is missing'() {
@@ -188,7 +188,7 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
     validator.validate([], description, errors)
 
     then:
-    1 * errors.rejectValue('targetGroupMappings.targetGroup', "${getDescriptionName()}.targetGroupMappings.targetGroup.not.nullable")
+    1 * errors.rejectValue('targetGroup', "${getDescriptionName()}.targetGroup.not.nullable")
   }
 
   void 'target group mappings should fail when container port is invalid'() {
@@ -208,27 +208,7 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
     validator.validate([], description, errors)
 
     then:
-    1 * errors.rejectValue('targetGroupMappings.containerPort', "${getDescriptionName()}.targetGroupMappings.containerPort.invalid")
-  }
-
-  void 'target group mappings should fail when both target invalid'() {
-    given:
-    def targetGroupMappings = new CreateServerGroupDescription.TargetGroupProperties(
-      containerName: null,
-      containerPort: -1,
-      targetGroup: 'target-group-arn'
-    )
-    def description = getDescription()
-    description.targetGroup = null
-    description.containerPort = null
-    description.targetGroupMappings = [targetGroupMappings]
-    def errors = Mock(Errors)
-
-    when:
-    validator.validate([], description, errors)
-
-    then:
-    1 * errors.rejectValue('targetGroupMappings.containerPort', "${getDescriptionName()}.targetGroupMappings.containerPort.invalid")
+    1 * errors.rejectValue('containerPort', "${getDescriptionName()}.containerPort.invalid")
   }
 
   void 'target group mappings should fail when container port is missing'() {
@@ -248,7 +228,7 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
     validator.validate([], description, errors)
 
     then:
-    1 * errors.rejectValue('targetGroupMappings.containerPort', "${getDescriptionName()}.targetGroupMappings.containerPort.not.nullable")
+    1 * errors.rejectValue('containerPort', "${getDescriptionName()}.containerPort.not.nullable")
   }
 
   void 'target group mappings should pass without load balancer if using container inputs'() {

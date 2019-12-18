@@ -159,12 +159,12 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
               inferHealthNetworkInterfacedContainer(
                   amazonloadBalancing, task, serviceName, service, taskDefinition);
         }
-        log.debug("Task Health contains the following elements: {}", taskHealth);
+        log.error("~~~~Task Health contains the following elements: {}", taskHealth);
 
         if (taskHealth != null) {
           taskHealthList.add(taskHealth);
         }
-        log.debug("TaskHealthList contains the following elements: {}", taskHealthList);
+        log.error("~~~~TaskHealthList contains the following elements: {}", taskHealthList);
       }
     }
 
@@ -195,8 +195,8 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
 
       if (!isContainerPortPresent(
           taskDefinition.getContainerDefinitions(), loadBalancer.getContainerPort())) {
-        log.debug(
-            "Container does not contain a port mapping with load balanced container port: {}.",
+        log.error(
+            "~~~~Container does not contain a port mapping with load balanced container port: {}.",
             loadBalancer.getContainerPort());
         continue;
       }
@@ -231,7 +231,7 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
 
   private TaskHealth makeTaskHealth(
       Task task, String serviceName, TargetHealthDescription healthDescription) {
-    log.debug("Task target health is: {}", healthDescription.getTargetHealth());
+    log.error("~~~~Task target health is: {}", healthDescription.getTargetHealth());
     String targetHealth =
         healthDescription.getTargetHealth().getState().equals("healthy")
             ? STATUS_UP
@@ -244,7 +244,7 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
     taskHealth.setTaskId(task.getTaskId());
     taskHealth.setTaskArn(task.getTaskArn());
     taskHealth.setInstanceId(task.getTaskArn());
-    log.debug("Task Health is: {}", taskHealth);
+    log.error("~~~~Task Health is: {}", taskHealth);
     return taskHealth;
   }
 
@@ -339,7 +339,7 @@ public class TaskHealthCachingAgent extends AbstractEcsCachingAgent<TaskHealth>
       for (Container container : containers) {
         for (NetworkBinding networkBinding : container.getNetworkBindings()) {
           if (networkBinding.getContainerPort().intValue() == hostPort.intValue()) {
-            log.debug("Load balanced hostPort: {} found for container.", hostPort);
+            log.error("~~~~Load balanced hostPort: {} found for container.", hostPort);
             return Optional.of(networkBinding.getHostPort());
           }
         }

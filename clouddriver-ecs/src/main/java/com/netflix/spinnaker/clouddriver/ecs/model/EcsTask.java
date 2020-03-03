@@ -42,6 +42,7 @@ public class EcsTask implements Instance, Serializable {
       Long launchTime,
       String lastStatus,
       String desiredStatus,
+      String healthStatus,
       String availabilityZone,
       List<Map<String, Object>> health,
       String privateAddress,
@@ -50,7 +51,7 @@ public class EcsTask implements Instance, Serializable {
     providerType = cloudProvider = EcsCloudProvider.ID;
     this.launchTime = launchTime;
     this.health = health;
-    healthState = calculateHealthState(lastStatus, desiredStatus);
+    healthState = calculateHealthState(lastStatus, desiredStatus, healthStatus);
     zone = availabilityZone;
     this.privateAddress = privateAddress;
     this.networkInterface = networkInterface;
@@ -69,7 +70,8 @@ public class EcsTask implements Instance, Serializable {
    * @param desiredStatus Desired status of the Task
    * @return Spinnaker understandable Health State
    */
-  private HealthState calculateHealthState(String lastStatus, String desiredStatus) {
+  private HealthState calculateHealthState(
+      String lastStatus, String desiredStatus, String healthStatus) {
     HealthState currentState = null;
 
     if ("RUNNING".equals(desiredStatus) && "PENDING".equals(lastStatus)) {
@@ -80,6 +82,10 @@ public class EcsTask implements Instance, Serializable {
       currentState = HealthState.Down;
     } else {
       currentState = HealthState.Unknown;
+    }
+
+    if ("UNHEALTHY".equals(healthStatus)) {
+      currentState = HealthState.Down;
     }
 
     return currentState;

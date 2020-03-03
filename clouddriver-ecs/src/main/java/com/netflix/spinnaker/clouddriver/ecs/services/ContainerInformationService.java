@@ -99,14 +99,19 @@ public class ContainerInformationService {
       taskPlatformHealth.put("instanceId", taskId);
       taskPlatformHealth.put("type", "ecs");
       taskPlatformHealth.put("healthClass", "platform");
-      taskPlatformHealth.put("state", toPlatformHealthState(task.getLastStatus()));
+      taskPlatformHealth.put(
+          "state", toPlatformHealthState(task.getLastStatus(), task.getHealthStatus()));
       healthMetrics.add(taskPlatformHealth);
     }
 
     return healthMetrics;
   }
 
-  private String toPlatformHealthState(String ecsTaskStatus) {
+  private String toPlatformHealthState(String ecsTaskStatus, String ecsTaskHealthStatus) {
+    if ("UNHEALTHY".equals(ecsTaskHealthStatus)) {
+      return "Down";
+    }
+
     switch (ecsTaskStatus) {
       case "PROVISIONING":
       case "PENDING":

@@ -218,6 +218,7 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
         launchTime,
         task.getLastStatus(),
         task.getDesiredStatus(),
+        task.getHealthStatus(),
         availabilityZone,
         healthStatus,
         address,

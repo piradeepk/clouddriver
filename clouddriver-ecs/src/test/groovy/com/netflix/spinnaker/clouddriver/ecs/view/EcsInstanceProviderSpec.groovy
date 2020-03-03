@@ -63,7 +63,7 @@ class EcsInstanceProviderSpec extends Specification {
 
     def containerInstance =  new ContainerInstance()
 
-    def ecsTask = new EcsTask(taskId, startTime, 'RUNNING', 'RUNNING',
+    def ecsTask = new EcsTask(taskId, startTime, 'RUNNING', 'RUNNING', 'HEALTHY',
       null, null, address, null)
 
     taskCacheClient.get(_) >> task

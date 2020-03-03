@@ -86,6 +86,7 @@ public class EcsInstanceProvider implements InstanceProvider<EcsTask, String> {
             launchTime,
             task.getLastStatus(),
             task.getDesiredStatus(),
+            task.getHealthStatus(),
             zone,
             healthStatus,
             address,

@@ -17,12 +17,15 @@
 package com.netflix.spinnaker.clouddriver.ecs.services;
 
 import com.amazonaws.services.ec2.model.Instance;
+import com.amazonaws.services.ecs.model.ContainerDefinition;
 import com.amazonaws.services.ecs.model.NetworkBinding;
+import com.amazonaws.services.ecs.model.TaskDefinition;
 import com.netflix.spinnaker.clouddriver.ecs.cache.Keys;
 import com.netflix.spinnaker.clouddriver.ecs.cache.client.ContainerInstanceCacheClient;
 import com.netflix.spinnaker.clouddriver.ecs.cache.client.EcsInstanceCacheClient;
 import com.netflix.spinnaker.clouddriver.ecs.cache.client.ServiceCacheClient;
 import com.netflix.spinnaker.clouddriver.ecs.cache.client.TaskCacheClient;
+import com.netflix.spinnaker.clouddriver.ecs.cache.client.TaskDefinitionCacheClient;
 import com.netflix.spinnaker.clouddriver.ecs.cache.client.TaskHealthCacheClient;
 import com.netflix.spinnaker.clouddriver.ecs.cache.model.ContainerInstance;
 import com.netflix.spinnaker.clouddriver.ecs.cache.model.Service;
@@ -44,6 +47,7 @@ public class ContainerInformationService {
   private final TaskCacheClient taskCacheClient;
   private final ServiceCacheClient serviceCacheClient;
   private final TaskHealthCacheClient taskHealthCacheClient;
+  private final TaskDefinitionCacheClient taskDefinitionCacheClient;
   private final EcsInstanceCacheClient ecsInstanceCacheClient;
   private final ContainerInstanceCacheClient containerInstanceCacheClient;
 
@@ -53,12 +57,14 @@ public class ContainerInformationService {
       TaskCacheClient taskCacheClient,
       ServiceCacheClient serviceCacheClient,
       TaskHealthCacheClient taskHealthCacheClient,
+      TaskDefinitionCacheClient taskDefinitionCacheClient,
       EcsInstanceCacheClient ecsInstanceCacheClient,
       ContainerInstanceCacheClient containerInstanceCacheClient) {
     this.ecsCredentialsConfig = ecsCredentialsConfig;
     this.taskCacheClient = taskCacheClient;
     this.serviceCacheClient = serviceCacheClient;
     this.taskHealthCacheClient = taskHealthCacheClient;
+    this.taskDefinitionCacheClient = taskDefinitionCacheClient;
     this.ecsInstanceCacheClient = ecsInstanceCacheClient;
     this.containerInstanceCacheClient = containerInstanceCacheClient;
   }
@@ -73,6 +79,20 @@ public class ContainerInformationService {
 
     String taskKey = Keys.getTaskKey(accountName, region, taskId);
     Task task = taskCacheClient.get(taskKey);
+
+    String taskDefinitionCacheKey =
+        Keys.getTaskDefinitionKey(accountName, region, service.getTaskDefinition());
+    TaskDefinition taskDefinition = taskDefinitionCacheClient.get(taskDefinitionCacheKey);
+
+    boolean hasHealthCheck = false;
+
+    for (ContainerDefinition containerDefinition : taskDefinition.getContainerDefinitions()) {
+      if (containerDefinition.getHealthCheck() != null
+          && containerDefinition.getHealthCheck().getCommand() != null) {
+        hasHealthCheck = true;
+        break;
+      }
+    }
 
     List<Map<String, Object>> healthMetrics = new ArrayList<>();
 
@@ -100,15 +120,19 @@ public class ContainerInformationService {
       taskPlatformHealth.put("type", "ecs");
       taskPlatformHealth.put("healthClass", "platform");
       taskPlatformHealth.put(
-          "state", toPlatformHealthState(task.getLastStatus(), task.getHealthStatus()));
+          "state",
+          toPlatformHealthState(task.getLastStatus(), task.getHealthStatus(), hasHealthCheck));
       healthMetrics.add(taskPlatformHealth);
     }
 
     return healthMetrics;
   }
 
-  private String toPlatformHealthState(String ecsTaskStatus, String ecsTaskHealthStatus) {
-    if ("UNHEALTHY".equals(ecsTaskHealthStatus)) {
+  private String toPlatformHealthState(
+      String ecsTaskStatus, String ecsTaskHealthStatus, boolean hasHealthCheck) {
+    if (hasHealthCheck && "UNKNOWN".equalsIgnoreCase(ecsTaskHealthStatus)) {
+      return "Starting";
+    } else if ("UNHEALTHY".equals(ecsTaskHealthStatus)) {
       return "Down";
     }
 

@@ -118,7 +118,15 @@ public class EcsCreateServerGroupDescriptionValidator extends CommonValidator {
       }
     }
 
-    boolean hasTargetGroup = StringUtils.isNotBlank(createServerGroupDescription.getTargetGroup());
+    if (StringUtils.isNotBlank(createServerGroupDescription.getTargetGroup())) {
+      rejectValue(errors, "targetGroup", "invalid");
+    }
+    if (StringUtils.isNotBlank(createServerGroupDescription.getLoadBalancedContainer())) {
+      rejectValue(errors, "loadBalancedContainer", "invalid");
+    }
+    if (createServerGroupDescription.getContainerPort() != null) {
+      rejectValue(errors, "containerPort", "invalid");
+    }
 
     if (!createServerGroupDescription.isUseTaskDefinitionArtifact()) {
       if (createServerGroupDescription.getDockerImageAddress() == null) {
@@ -140,26 +148,6 @@ public class EcsCreateServerGroupDescriptionValidator extends CommonValidator {
       } else {
         rejectValue(errors, "reservedMemory", "not.nullable");
       }
-    } else {
-      // Verify load balanced services w/ an artifact specify which container to load balance on
-      boolean hasLoadBalancedContainer =
-          StringUtils.isNotBlank(createServerGroupDescription.getLoadBalancedContainer());
-
-      if (hasTargetGroup && !hasLoadBalancedContainer) {
-        rejectValue(errors, "loadBalancedContainer", "not.nullable");
-      } else if (!hasTargetGroup && hasLoadBalancedContainer) {
-        rejectValue(errors, "targetGroup", "not.nullable");
-      }
-    }
-
-    if (createServerGroupDescription.getContainerPort() != null) {
-      if (createServerGroupDescription.getContainerPort() < 0
-          || createServerGroupDescription.getContainerPort() > 65535) {
-        rejectValue(errors, "containerPort", "invalid");
-      }
-    } else if (hasTargetGroup) {
-      // if a target group is specified, a container port must be specified
-      rejectValue(errors, "containerPort", "not.nullable");
     }
 
     validateTargetGroupMappings(createServerGroupDescription, errors);
@@ -178,14 +166,6 @@ public class EcsCreateServerGroupDescriptionValidator extends CommonValidator {
       CreateServerGroupDescription createServerGroupDescription, Errors errors) {
     if (createServerGroupDescription.getTargetGroupMappings() != null
         && !createServerGroupDescription.getTargetGroupMappings().isEmpty()) {
-
-      if (StringUtils.isNotEmpty(createServerGroupDescription.getTargetGroup())) {
-        // Only one of TargetGroup or TargetGroupMappings should be defined.
-        errors.rejectValue(
-            "targetGroup",
-            errorKey + "." + "targetGroup" + "." + "invalid",
-            "TargetGroup cannot be specified when TargetGroupMapping.TargetGroup is specified. Please use TargetGroupMapping");
-      }
 
       for (CreateServerGroupDescription.TargetGroupProperties targetGroupProperties :
           createServerGroupDescription.getTargetGroupMappings()) {

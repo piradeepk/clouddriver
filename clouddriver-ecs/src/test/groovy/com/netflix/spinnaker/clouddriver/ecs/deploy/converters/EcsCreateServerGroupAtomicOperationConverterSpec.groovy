@@ -34,10 +34,16 @@ class EcsCreateServerGroupAtomicOperationConverterSpec extends Specification {
     def converter = new EcsCreateServerGroupAtomicOperationConverter(objectMapper: new ObjectMapper())
     converter.accountCredentialsProvider = accountCredentialsProvider
 
+    def tgMapping = new CreateServerGroupDescription.TargetGroupProperties()
+    tgMapping.setContainerName("lb-container")
+    tgMapping.setContainerPort(1337)
+    tgMapping.setTargetGroup("target-group-arn")
+
     def input = [
       ecsClusterName           : 'mycluster',
       iamRole                  : 'role-arn',
       containerPort            : 1337,
+      loadBalancedContainer    : "lb-container",
       targetGroup              : 'target-group-arn',
       securityGroups           : ['sg-deadbeef'],
       serverGroupVersion       : 'v007',
@@ -60,10 +66,17 @@ class EcsCreateServerGroupAtomicOperationConverterSpec extends Specification {
     then:
     description instanceof CreateServerGroupDescription
 
+    description.getTargetGroup() == null
+    description.getContainerPort() == null
+    description.getLoadBalancedContainer() == null
+
+    description.getTargetGroupMappings().contains(tgMapping)
+
     when:
     def operation = converter.convertOperation(input)
 
     then:
     operation instanceof CreateServerGroupAtomicOperation
+
   }
 }

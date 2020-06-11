@@ -23,6 +23,9 @@ import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperations;
 import com.netflix.spinnaker.clouddriver.security.AbstractAtomicOperationsCredentialsSupport;
 import java.util.Map;
+import java.util.Set;
+import org.apache.commons.lang3.StringUtils;
+import org.assertj.core.util.Sets;
 import org.springframework.stereotype.Component;
 
 @EcsOperation(AtomicOperations.CREATE_SERVER_GROUP)
@@ -40,6 +43,32 @@ public class EcsCreateServerGroupAtomicOperationConverter
     CreateServerGroupDescription converted =
         getObjectMapper().convertValue(input, CreateServerGroupDescription.class);
     converted.setCredentials(getCredentialsObject(input.get("credentials").toString()));
+
+    if (StringUtils.isNotBlank(converted.getTargetGroup())) {
+      CreateServerGroupDescription.TargetGroupProperties targetGroupMapping =
+          new CreateServerGroupDescription.TargetGroupProperties();
+
+      String containerToUse =
+          StringUtils.isNotBlank(converted.getLoadBalancedContainer())
+              ? converted.getLoadBalancedContainer()
+              : "";
+
+      targetGroupMapping.setContainerName(containerToUse);
+      targetGroupMapping.setContainerPort(converted.getContainerPort());
+      targetGroupMapping.setTargetGroup(converted.getTargetGroup());
+
+      if (converted.getTargetGroupMappings() != null) {
+        converted.getTargetGroupMappings().add(targetGroupMapping);
+      } else {
+        Set<CreateServerGroupDescription.TargetGroupProperties> mappings = Sets.newHashSet();
+        mappings.add(targetGroupMapping);
+        converted.setTargetGroupMappings(mappings);
+      }
+
+      converted.setTargetGroup(null);
+      converted.setContainerPort(null);
+      converted.setLoadBalancedContainer(null);
+    }
 
     return converted;
   }

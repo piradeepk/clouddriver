@@ -121,8 +121,6 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
   void 'should pass without load balancer'() {
     given:
     def description = getDescription()
-    description.containerPort = null
-    description.targetGroup = null
     def errors = Mock(Errors)
 
     when:
@@ -136,28 +134,52 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
     given:
     def description = getDescription()
     description.useTaskDefinitionArtifact = true
+
     def errors = Mock(Errors)
 
     when:
     validator.validate([], description, errors)
 
     then:
-    1 * errors.rejectValue('loadBalancedContainer', "${getDescriptionName()}.loadBalancedContainer.not.nullable")
+    1 * errors.rejectValue('targetGroupMappings.containerName', "${getDescriptionName()}.targetGroupMappings.containerName.not.nullable")
+  }
+
+  void 'target group, container port and load balanced container are specified'() {
+    given:
+    def description = getDescription()
+    description.targetGroup = 'target-group-arn'
+    description.loadBalancedContainer = 'container-name'
+    description.containerPort = 80
+
+    def errors = Mock(Errors)
+
+    when:
+    validator.validate([], description, errors)
+
+    then:
+    1 * errors.rejectValue('targetGroup', "${getDescriptionName()}.targetGroup.invalid")
+    1 * errors.rejectValue('loadBalancedContainer', "${getDescriptionName()}.loadBalancedContainer.invalid")
+    1 * errors.rejectValue('containerPort', "${getDescriptionName()}.containerPort.invalid")
   }
 
   void '(with artifact) should fail when load balanced container is specified but load balancer is missing'() {
     given:
+    def tgMapping = new CreateServerGroupDescription.TargetGroupProperties()
+    tgMapping.setTargetGroup(null)
+    tgMapping.setContainerPort(null)
+    tgMapping.setContainerName('load-balanced-container')
+
     def description = getDescription()
-    description.targetGroup = null
-    description.loadBalancedContainer = 'load-balanced-container'
     description.useTaskDefinitionArtifact = true
+    description.targetGroupMappings = [tgMapping]
+
     def errors = Mock(Errors)
 
     when:
     validator.validate([], description, errors)
 
     then:
-    1 * errors.rejectValue('targetGroup', "${getDescriptionName()}.targetGroup.not.nullable")
+    1 * errors.rejectValue('targetGroupMappings.targetGroup', "${getDescriptionName()}.targetGroupMappings.targetGroup.not.nullable")
   }
 
   void 'target group mappings should fail when load balancer specified but container name is missing'() {
@@ -168,8 +190,6 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
       targetGroup: 'target-group-arn'
     )
     def description = getDescription()
-    description.targetGroup = null
-    description.containerPort = null
     description.dockerImageAddress = null
     description.useTaskDefinitionArtifact = true
     description.targetGroupMappings = [targetGroupMappings]
@@ -190,8 +210,6 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
       targetGroup: null
     )
     def description = getDescription()
-    description.targetGroup = null
-    description.containerPort = null
     description.dockerImageAddress = null
     description.useTaskDefinitionArtifact = true
     description.targetGroupMappings = [targetGroupMappings]
@@ -212,8 +230,6 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
       targetGroup: 'target-group-arn'
     )
     def description = getDescription()
-    description.targetGroup = null
-    description.containerPort = null
     description.targetGroupMappings = [targetGroupMappings]
     def errors = Mock(Errors)
 
@@ -232,8 +248,6 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
       targetGroup: 'target-group-arn'
     )
     def description = getDescription()
-    description.targetGroup = null
-    description.containerPort = null
     description.targetGroupMappings = [targetGroupMappings]
     def errors = Mock(Errors)
 
@@ -252,8 +266,6 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
       targetGroup: 'target-group-arn'
     )
     def description = getDescription()
-    description.targetGroup = null
-    description.containerPort = null
     description.targetGroupMappings = [targetGroupMappings]
     def errors = Mock(Errors)
 
@@ -276,6 +288,7 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
     description.containerPort = null
     description.computeUnits = null
     description.reservedMemory = null
+    description.targetGroup = null
     description.capacity.setDesired(null)
     description.capacity.setMin(null)
     description.capacity.setMax(null)
@@ -285,7 +298,7 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
   @Override
   Set<String> notNullableProperties() {
     ['placementStrategySequence', 'availabilityZones', 'application',
-     'ecsClusterName', 'dockerImageAddress', 'credentials', 'containerPort', 'computeUnits',
+     'ecsClusterName', 'dockerImageAddress', 'credentials', 'computeUnits',
      'reservedMemory', 'capacity.desired', 'capacity.min', 'capacity.max']
   }
 
@@ -298,11 +311,13 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
     description.getCapacity().setDesired(-1)
     description.getCapacity().setMax(-2)
     description.getCapacity().setMin(-1)
+    description.loadBalancedContainer = "lb-container"
     description.placementStrategySequence = [
       new PlacementStrategy().withType("invalid-type"),
       new PlacementStrategy().withType(PlacementStrategyType.Binpack).withField("invalid"),
       new PlacementStrategy().withType(PlacementStrategyType.Spread).withField("invalid")
     ]
+    description.targetGroup = "some-tg"
     return description
   }
 
@@ -310,7 +325,8 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
   Set<String> invalidProperties() {
     ['reservedMemory', 'computeUnits', 'containerPort', 'placementStrategySequence.binpack',
      'placementStrategySequence.type', 'capacity.desired', 'placementStrategySequence.spread',
-     'capacity.min', 'capacity.max', 'capacity.min.max.range']
+     'capacity.min', 'capacity.max', 'capacity.min.max.range', 'targetGroup', 'containerPort',
+     'loadBalancedContainer']
   }
 
   @Override
@@ -325,15 +341,18 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
 
   @Override
   AbstractECSDescription getDescription() {
+    def tgMapping = new CreateServerGroupDescription.TargetGroupProperties(
+      containerName: null,
+      containerPort: 1337,
+      targetGroup: 'target-group-arn'
+    )
+
     def description = new CreateServerGroupDescription()
     description.credentials = TestCredential.named('test')
     description.region = 'us-west-1'
-
     description.application = 'my-app'
     description.ecsClusterName = 'mycluster'
     description.iamRole = 'iam-role-arn'
-    description.containerPort = 1337
-    description.targetGroup = 'target-group-arn'
     description.securityGroupNames = ['sg-deadbeef']
     description.portProtocol = 'tcp'
     description.computeUnits = 256
@@ -342,6 +361,7 @@ class EcsCreateServergroupDescriptionValidatorSpec extends AbstractValidatorSpec
     description.capacity = new ServerGroup.Capacity(1, 2, 1)
     description.availabilityZones = ['us-west-1': ['us-west-1a']]
     description.placementStrategySequence = [new PlacementStrategy().withType(PlacementStrategyType.Random)]
+    description.targetGroupMappings = [tgMapping]
 
     description
   }

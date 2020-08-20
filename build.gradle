@@ -31,10 +31,18 @@ buildscript {
 }
 
 plugins {
+  id 'jacoco'
   id 'io.spinnaker.project' version "$spinnakerGradleVersion" apply false
   id "nebula.kotlin" version "$kotlinVersion" apply false
   id "org.jetbrains.kotlin.plugin.allopen" version "$kotlinVersion" apply false
   id "com.google.protobuf" version "0.8.12" apply false
+}
+
+apply plugin: 'java'
+
+jacoco {
+    toolVersion = "0.8.5"
+    reportsDir = file("$buildDir/customJacocoReportDir")
 }
 
 subprojects {
@@ -63,6 +71,7 @@ subprojects {
 
     test {
       useJUnitPlatform()
+      finalizedBy jacocoTestReport // report is always generated after tests run
       testLogging {
         exceptionFormat = 'full'
         if (project.hasProperty('slowTest')) {
@@ -80,6 +89,15 @@ subprojects {
         }
         minHeapSize = "512m"
         maxHeapSize = "512m"
+      }
+    }
+
+    jacocoTestReport {
+      dependsOn test // tests are required to run before generating the report
+      reports {
+        xml.enabled false
+        csv.enabled false
+        html.destination file("${buildDir}/jacocoHtml")
       }
     }
   }

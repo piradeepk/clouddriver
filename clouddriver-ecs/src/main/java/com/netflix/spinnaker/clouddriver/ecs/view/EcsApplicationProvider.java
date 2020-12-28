@@ -1,145 +1,125 @@
 /*
- * Copyright 2017 Lookout, Inc.
+ * Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * You may not use this file except in compliance with the License.
+ * A copy of the License is located at
  *
  *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+ * CONDITIONS OF ANY KIND, either express or implied. See the License
+ * for the specific language governing permissions and limitations under
+ * the License.
  */
 
 package com.netflix.spinnaker.clouddriver.ecs.view;
 
-import com.google.common.collect.Sets;
-import com.netflix.spinnaker.clouddriver.aws.security.AmazonCredentials;
-import com.netflix.spinnaker.clouddriver.ecs.cache.client.ServiceCacheClient;
-import com.netflix.spinnaker.clouddriver.ecs.cache.model.Service;
+import static com.netflix.spinnaker.clouddriver.ecs.EcsCloudProvider.ID;
+import static com.netflix.spinnaker.clouddriver.ecs.cache.Keys.Namespace.APPLICATIONS;
+import static com.netflix.spinnaker.clouddriver.ecs.cache.Keys.Namespace.SERVICES;
+import static java.util.stream.Collectors.toSet;
+
+import com.netflix.spinnaker.cats.cache.Cache;
+import com.netflix.spinnaker.cats.cache.CacheData;
+import com.netflix.spinnaker.cats.cache.RelationshipCacheFilter;
+import com.netflix.spinnaker.clouddriver.ecs.cache.Keys;
 import com.netflix.spinnaker.clouddriver.ecs.model.EcsApplication;
-import com.netflix.spinnaker.clouddriver.ecs.security.NetflixECSCredentials;
 import com.netflix.spinnaker.clouddriver.model.Application;
 import com.netflix.spinnaker.clouddriver.model.ApplicationProvider;
-import com.netflix.spinnaker.credentials.CredentialsRepository;
-import com.netflix.spinnaker.moniker.Moniker;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component
 public class EcsApplicationProvider implements ApplicationProvider {
 
-  private final ServiceCacheClient serviceCacheClient;
-  private final CredentialsRepository<NetflixECSCredentials> credentialsRepository;
+  private final Cache cacheView;
 
   @Autowired
-  public EcsApplicationProvider(
-      CredentialsRepository<NetflixECSCredentials> credentialsRepository,
-      ServiceCacheClient serviceCacheClient) {
-    this.credentialsRepository = credentialsRepository;
-    this.serviceCacheClient = serviceCacheClient;
+  public EcsApplicationProvider(Cache cacheView) {
+    this.cacheView = cacheView;
   }
 
   @Override
   public Application getApplication(String name) {
-
-    for (Application application : getApplications(true)) {
-      if (name.equals(application.getName())) {
-        return application;
-      }
-    }
-
-    return null;
+    return translate(
+        cacheView.get(
+            APPLICATIONS.ns,
+            Keys.getApplicationKey(name),
+            RelationshipCacheFilter.include(SERVICES.ns)));
   }
 
   @Override
   public Set<Application> getApplications(boolean expand) {
-    Set<Application> applications = new HashSet<>();
+    RelationshipCacheFilter relationshipFilter =
+        expand ? RelationshipCacheFilter.include(SERVICES.ns) : RelationshipCacheFilter.none();
+    Collection<CacheData> applications =
+        cacheView.getAll(
+            APPLICATIONS.ns,
+            cacheView.filterIdentifiers(APPLICATIONS.ns, ID + ";*"),
+            relationshipFilter);
+    log.info("getApplications found {} Spinnaker applications in the cache.", applications.size());
+    return applications.stream().map(this::translate).collect(toSet());
+  }
 
-    for (NetflixECSCredentials credentials : credentialsRepository.getAll()) {
-      Set<Application> retrievedApplications = findApplicationsForAllRegions(credentials, expand);
-      applications.addAll(retrievedApplications);
+  private Application translate(CacheData cacheData) {
+    log.debug("Translating CacheData to EcsApplication");
+    if (cacheData == null) {
+      HashMap<String, String> attributes = new HashMap<>();
+      HashMap<String, Set<String>> clusterNames = new HashMap<>();
+      EcsApplication application = new EcsApplication("test", attributes, clusterNames);
+      return application;
     }
 
-    return applications;
-  }
-
-  private Set<Application> findApplicationsForAllRegions(
-      AmazonCredentials credentials, boolean expand) {
-    Set<Application> applications = new HashSet<>();
-
-    for (AmazonCredentials.AWSRegion awsRegion : credentials.getRegions()) {
-      applications.addAll(
-          findApplicationsForRegion(credentials.getName(), awsRegion.getName(), expand));
-    }
-
-    return applications;
-  }
-
-  private Set<Application> findApplicationsForRegion(
-      String account, String region, boolean expand) {
-    HashMap<String, Application> applicationHashMap =
-        populateApplicationMap(account, region, expand);
-    return transposeApplicationMapToSet(applicationHashMap);
-  }
-
-  private HashMap<String, Application> populateApplicationMap(
-      String account, String region, boolean expand) {
-    HashMap<String, Application> applicationHashMap = new HashMap<>();
-    Collection<Service> services = serviceCacheClient.getAll(account, region);
-
-    for (Service service : services) {
-      applicationHashMap = inferApplicationFromServices(applicationHashMap, service, expand);
-    }
-    return applicationHashMap;
-  }
-
-  private Set<Application> transposeApplicationMapToSet(
-      HashMap<String, Application> applicationHashMap) {
-    Set<Application> applications = new HashSet<>();
-
-    for (Map.Entry<String, Application> entry : applicationHashMap.entrySet()) {
-      applications.add(entry.getValue());
-    }
-
-    return applications;
-  }
-
-  private HashMap<String, Application> inferApplicationFromServices(
-      HashMap<String, Application> applicationHashMap, Service service, boolean expand) {
+    String appName = (String) cacheData.getAttributes().get("name");
 
     HashMap<String, String> attributes = new HashMap<>();
-    Moniker moniker = service.getMoniker();
-
-    String appName = moniker.getApp();
-    String serviceName = service.getServiceName();
-    String accountName = service.getAccount();
     attributes.put("name", appName);
 
     HashMap<String, Set<String>> clusterNames = new HashMap<>();
-    if (expand) {
-      clusterNames.put(accountName, Sets.newHashSet(serviceName));
-    }
 
     EcsApplication application = new EcsApplication(appName, attributes, clusterNames);
-
-    if (!applicationHashMap.containsKey(appName)) {
-      applicationHashMap.put(appName, application);
-    } else {
-      applicationHashMap.get(appName).getAttributes().putAll(application.getAttributes());
-      if (expand) {
-        applicationHashMap.get(appName).getClusterNames().get(accountName).add(serviceName);
-      }
+    if (application == null) {
+      return null;
     }
 
-    return applicationHashMap;
+    Set<String> services = getServiceRelationships(cacheData);
+    log.info("Found {} services for app {}", services.size(), appName);
+    services.forEach(
+        key -> {
+          Map<String, String> parsedKey = Keys.parse(key);
+          if (application.getClusterNames().get(parsedKey.get("account")) != null) {
+            application
+                .getClusterNames()
+                .get(parsedKey.get("account"))
+                .add(parsedKey.get("serviceName"));
+          } else {
+            application
+                .getClusterNames()
+                .put(
+                    parsedKey.get("account"),
+                    new HashSet<>(Arrays.asList(parsedKey.get("serviceName"))));
+          }
+        });
+
+    log.info(
+        "Found {} clusterNames for application {}", application.getClusterNames(), application);
+    return application;
+  }
+
+  private Set<String> getServiceRelationships(CacheData cacheData) {
+    Collection<String> serviceRelationships = cacheData.getRelationships().get(SERVICES.ns);
+    return serviceRelationships == null
+        ? Collections.emptySet()
+        : new HashSet<>(serviceRelationships);
   }
 }

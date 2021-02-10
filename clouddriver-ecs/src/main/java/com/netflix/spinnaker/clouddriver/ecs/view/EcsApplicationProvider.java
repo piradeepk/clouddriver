@@ -51,11 +51,18 @@ public class EcsApplicationProvider implements ApplicationProvider {
 
   @Override
   public Application getApplication(String name) {
-    return translate(
-        cacheView.get(
+    Collection<CacheData> applicationsData =
+        cacheView.getAll(
             APPLICATIONS.ns,
-            Keys.getApplicationKey(name),
-            RelationshipCacheFilter.include(SERVICES.ns)));
+            cacheView.filterIdentifiers(APPLICATIONS.ns, ID + ";*"),
+            RelationshipCacheFilter.include(SERVICES.ns));
+    log.info(
+        "getApplication found {} Spinnaker applications in the cache with name {}.",
+        applicationsData.size(),
+        name);
+    Set<Application> applications = applicationsData.stream().map(this::translate).collect(toSet());
+    log.debug("Aggregating all applications for app {}", name);
+    return aggregateApplicationsForAllAccounts(applications, name);
   }
 
   @Override
@@ -74,10 +81,7 @@ public class EcsApplicationProvider implements ApplicationProvider {
   private Application translate(CacheData cacheData) {
     log.debug("Translating CacheData to EcsApplication");
     if (cacheData == null) {
-      HashMap<String, String> attributes = new HashMap<>();
-      HashMap<String, Set<String>> clusterNames = new HashMap<>();
-      EcsApplication application = new EcsApplication("test", attributes, clusterNames);
-      return application;
+      return null;
     }
 
     String appName = (String) cacheData.getAttributes().get("name");
@@ -121,5 +125,35 @@ public class EcsApplicationProvider implements ApplicationProvider {
     return serviceRelationships == null
         ? Collections.emptySet()
         : new HashSet<>(serviceRelationships);
+  }
+
+  private Application aggregateApplicationsForAllAccounts(
+      Set<Application> applications, String appName) {
+    HashMap<String, String> attributes = new HashMap<>();
+    attributes.put("name", appName);
+
+    HashMap<String, Set<String>> clusterNames = new HashMap<>();
+
+    EcsApplication aggregatedApp = new EcsApplication(appName, attributes, clusterNames);
+    if (aggregatedApp == null) {
+      return null;
+    }
+
+    applications.forEach(
+        application -> {
+          Map<String, Set<String>> appClusters = application.getClusterNames();
+          appClusters
+              .keySet()
+              .forEach(
+                  account -> {
+                    if (aggregatedApp.getClusterNames().get(account) != null) {
+                      application.getClusterNames().get(account).addAll(appClusters.get(account));
+                    } else {
+                      application.getClusterNames().put(account, appClusters.get(account));
+                    }
+                  });
+        });
+
+    return aggregatedApp;
   }
 }

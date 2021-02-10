@@ -67,7 +67,7 @@ class EcsApplicationProviderSpec extends Specification {
     def relationships = [Keys.getServiceKey(accountName, region, serviceName)]
 
     cache.filterIdentifiers(_, _) >> []
-    cache.get(_, _, _) >> new DefaultCacheData(appName, attributes, [(Keys.Namespace.SERVICES.ns):relationships])
+    cache.getAll(_, _, _) >> [new DefaultCacheData(appName, attributes, [(Keys.Namespace.SERVICES.ns):relationships])]
 
     when:
     def retrievedApp = provider.getApplication(appName)

@@ -39,7 +39,7 @@ public class ApplicationCacheClientTest extends CommonCacheClient {
   public void shouldConvert() {
     // Given
     ObjectMapper mapper = new ObjectMapper();
-    String key = Keys.getApplicationKey(APP_NAME);
+    String key = Keys.getApplicationKey(ACCOUNT, APP_NAME);
 
     Application application = new Application();
 

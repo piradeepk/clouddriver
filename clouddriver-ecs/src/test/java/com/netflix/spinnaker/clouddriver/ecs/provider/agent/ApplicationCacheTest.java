@@ -46,7 +46,7 @@ public class ApplicationCacheTest extends CommonCachingAgent {
   @Test
   public void shouldRetrieveFromWrittenCache() {
     // Given
-    String key = Keys.getApplicationKey(APP_NAME);
+    String key = Keys.getApplicationKey(ACCOUNT, APP_NAME);
 
     Application application = new Application();
     application.setName(APP_NAME);

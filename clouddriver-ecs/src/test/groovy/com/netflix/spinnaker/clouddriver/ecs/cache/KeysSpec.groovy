@@ -52,23 +52,23 @@ class KeysSpec extends Specification {
   }
 
   def 'should parse a given application key properly'() {
-    given:
-    def application_1 = 'test-application-1'
-    def application_2 = 'test-application-2'
-
     expect:
-    Keys.parse(ID + SEPARATOR + APPLICATIONS.ns + SEPARATOR + application_1) == [provider: ID, type: APPLICATIONS.ns, application: application_1]
-    Keys.parse(ID + SEPARATOR + APPLICATIONS.ns + SEPARATOR + application_2) == [provider: ID, type: APPLICATIONS.ns, application: application_2]
+    Keys.parse(ID + SEPARATOR + APPLICATIONS.ns + SEPARATOR + account + SEPARATOR + application) == [provider: ID, type: APPLICATIONS.ns, account: account, application: application]
+
+    where:
+    account          | application
+    'test-account-1' | 'test-application-1'
+    'test-account-2' | 'test-application-2'
   }
 
   def 'should generate the proper application key'() {
-    given:
-    def application_1 = 'test-application-1'
-    def application_2 = 'test-application-2'
-
     expect:
-    Keys.getApplicationKey(application_1) == ID + SEPARATOR + APPLICATIONS.ns + SEPARATOR + application_1
-    Keys.getApplicationKey(application_2) == ID + SEPARATOR + APPLICATIONS.ns + SEPARATOR + application_2
+    Keys.getApplicationKey(account, application) == ID + SEPARATOR + APPLICATIONS.ns + SEPARATOR + account + SEPARATOR + application
+
+    where:
+    account          | application
+    'test-account-1' | 'test-application-1'
+    'test-account-2' | 'test-application-2'
   }
 
   def 'should parse a given iam role key properly'() {

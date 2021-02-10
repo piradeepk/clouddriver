@@ -86,9 +86,9 @@ public class Keys implements KeyParser {
     Map<String, String> result = new HashMap<>();
     result.put("provider", parts[0]);
     result.put("type", parts[1]);
+    result.put("account", parts[2]);
 
     if (parts[1].equals(HEALTH.getNs())) {
-      result.put("account", parts[2]);
       result.put("region", parts[3]);
       result.put("taskId", parts[4]);
       return result;
@@ -99,59 +99,48 @@ public class Keys implements KeyParser {
 
     switch (namespace) {
       case APPLICATIONS:
-        result.put("application", parts[2]);
+        result.put("application", parts[3]);
         break;
       case SERVICES:
-        result.put("account", parts[2]);
         result.put("region", parts[3]);
         result.put("serviceName", parts[4]);
         break;
       case ECS_CLUSTERS:
-        result.put("account", parts[2]);
         result.put("region", parts[3]);
         result.put("clusterName", parts[4]);
         break;
       case TASKS:
-        result.put("account", parts[2]);
         result.put("region", parts[3]);
         result.put("taskId", parts[4]);
         break;
       case CONTAINER_INSTANCES:
-        result.put("account", parts[2]);
         result.put("region", parts[3]);
         result.put("containerInstanceArn", parts[4]);
         break;
       case TASK_DEFINITIONS:
-        result.put("account", parts[2]);
         result.put("region", parts[3]);
         result.put("taskDefinitionArn", parts[4]);
         break;
       case ALARMS:
-        result.put("account", parts[2]);
         result.put("region", parts[3]);
         result.put("alarmArn", parts[4]);
         break;
       case IAM_ROLE:
-        result.put("account", parts[2]);
         result.put("roleName", parts[3]);
         break;
       case SECRETS:
-        result.put("account", parts[2]);
         result.put("region", parts[3]);
         result.put("secretName", parts[4]);
         break;
       case SERVICE_DISCOVERY_REGISTRIES:
-        result.put("account", parts[2]);
         result.put("region", parts[3]);
         result.put("serviceId", parts[4]);
         break;
       case SCALABLE_TARGETS:
-        result.put("account", parts[2]);
         result.put("region", parts[3]);
         result.put("resource", parts[4]);
         break;
       case TARGET_HEALTHS:
-        result.put("account", parts[2]);
         result.put("region", parts[3]);
         result.put("targetGroupArn", parts[4]);
         break;
@@ -175,8 +164,14 @@ public class Keys implements KeyParser {
     return buildKey(Namespace.ECS_CLUSTERS.ns, account, region, clusterName);
   }
 
-  public static String getApplicationKey(String name) {
-    return ID + SEPARATOR + Namespace.APPLICATIONS + SEPARATOR + name.toLowerCase();
+  public static String getApplicationKey(String account, String name) {
+    return ID
+        + SEPARATOR
+        + Namespace.APPLICATIONS
+        + SEPARATOR
+        + account
+        + SEPARATOR
+        + name.toLowerCase();
   }
 
   public static String getTaskKey(String account, String region, String taskId) {

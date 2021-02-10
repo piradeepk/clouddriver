@@ -121,7 +121,7 @@ public class ApplicationCachingAgent extends AbstractEcsOnDemandAgent<Applicatio
 
     for (Application application : applications) {
       Map<String, Object> attributes = convertApplicationToAttributes(application);
-      String applicationKey = Keys.getApplicationKey(application.getName());
+      String applicationKey = Keys.getApplicationKey(accountName, application.getName());
 
       applicationData.add(
           new DefaultCacheData(applicationKey, attributes, application.getRelationships()));

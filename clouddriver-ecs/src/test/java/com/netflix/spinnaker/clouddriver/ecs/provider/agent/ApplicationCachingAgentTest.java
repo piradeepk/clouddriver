@@ -86,7 +86,7 @@ public class ApplicationCachingAgentTest extends CommonCachingAgent {
     List<Application> applications = new LinkedList<>();
     Set<String> keys = new HashSet<>();
     for (String appName : applicationNames) {
-      keys.add(Keys.getApplicationKey(appName));
+      keys.add(Keys.getApplicationKey(ACCOUNT, appName));
       Application application = new Application();
       application.setName(appName);
       applications.add(application);
